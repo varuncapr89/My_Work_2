@@ -1,0 +1,17 @@
+README.md
+setup.py
+bob/__init__.py
+bob.egg-info/PKG-INFO
+bob.egg-info/SOURCES.txt
+bob.egg-info/dependency_links.txt
+bob.egg-info/entry_points.txt
+bob.egg-info/requires.txt
+bob.egg-info/top_level.txt
+bob/aws/__init__.py
+bob/aws/codebuild.py
+bob/commands/__init__.py
+bob/commands/build.py
+bob/commands/deploy.py
+bob/commands/full.py
+bob/scripts/__init__.py
+bob/scripts/entrypoint.py

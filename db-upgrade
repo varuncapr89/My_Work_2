@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+# NAME
+#      db-upgrade - Initiates DB upgrade on all sbxs/prod DBs from specific jumphost(fedw1prod/fedw1staging)
+#
+# SYNOPSIS
+#      Initiate Upgrade:                 python3 db-upgrade proddb/sbxdb -v v2.6.4-pg-9.6.22
+#      
+#
+# DESCRIPTION
+#      Upgrades the version of sandbox/production DBs from specific jumphost. This script will be available on jumphosts
+#
+# FLAGS
+#      -v
+#           Specify the DB version you wanted to upgrade to.
+
+import subprocess as sp
+import os
+import argparse
+
+
+# parses the input and prints help
+
+parser = argparse.ArgumentParser("\n Script to update PG version of all prod/sbx databases, use -v to pass the new version Ex: python3 db-upgrade proddb/sbxdb -v v2.6.4-pg-9.6.22")
+parser.add_argument('dbtype', help='Either "proddb", "sbxdb"')
+parser.add_argument('-v', '--version', help='Pass new version of DB Ex:v2.6.4-pg-9.6.22', required=True)
+args = parser.parse_args()
+
+db = args.dbtype.lower()
+newVersion = args.version
+
+
+#Function used to find the right environment for respective sandbox. 
+def envFinder(envValidator):
+	if (envValidator == 'va' or envValidator == 'vaesig' or envValidator == 'vhaie'):
+		return "sbx.va.fedw1.medallia.local"
+	elif(envValidator == 'usps' or envValidator == 'uspspostalpulse'):
+		return "sbx.usps.fedw1.medallia.local"
+	elif(envValidator == 'testfedw1' or envValidator == 'test2fedw1'):
+		return "sbx.test.fedw1.medallia.local"
+	elif(envValidator == 'ssa'):
+		return "sbx.ssa.fedw1.medallia.local"
+	elif(envValidator == 'ibmusgov'):
+		return "sbx.ibm.fedw1.medallia.local"
+	elif(envValidator == 'usasurveyex'):
+		return "sbx.opm.fedw1.medallia.local"
+	elif(envValidator == 'fema'):
+		return "sbx.fema.fedw1.medallia.local"
+	else:
+		return "sbx.shared.fedw1.medallia.local"
+
+def sbxDb():
+	#Executing the sbx list command and storing the ouput into a variable
+	spo = sp.Popen(['/bin/bash', '-i', '-c', 'sbx list'], stdout=sp.PIPE, bufsize=0)
+	sandboxes = []
+	#Building a list of sandboxes
+	while True:
+		output = spo.stdout.readline()
+		sandbox = (output.decode('utf8', errors='strict').strip())
+		sandboxes.append([sandbox])
+		return_code = spo.poll()
+		if return_code is not None:
+			break
+	i = 0
+	l = len(sandboxes)-1
+	#Looping through the list of sandboxes and grepping out the information we need for initiating the upgrade.  
+	while i < l:
+		
+		sbxUrl = sandboxes[i][0]
+		sbxUrlStr = sbxUrl.split('//')[1]
+		cluster = sbxUrlStr.split('.')[0]
+		envValidator = sbxUrlStr.split('-')[1]
+		env=envFinder(envValidator)
+		titanCommand = f'titan service-alter -e {env} -c express.{cluster} -s db --allow-empty --image 715289973214.dkr.ecr.us-gov-east-1.amazonaws.com/mdbs/postgres/pg-centos:{newVersion}'
+		print("Updating the DB version of this sbx:" + sbxUrl)
+		sp.call(['/bin/bash', '-i', '-c', titanCommand])
+		i +=1
+def prodDb():
+	#Executing the sbx list command and storing the ouput into a variable
+	db_list=sp.run(['sam aurora jobs | grep db | grep -Evw \'sbx|monitor|micro|feedback\' | cut -f1 -d \' \''],shell=True, stdout=sp.PIPE, bufsize=0)
+	db = db_list.stdout.decode()
+	for d in db.splitlines():
+		d_list = d.split('/')
+		env = d_list[1]
+		cluster = d_list[2]
+		if 'db1.db.broadcaster.brcast' in cluster:
+			cluster = d_list[2].split('.', 1)[1]
+		else:
+			pass
+		titanCommand = f'titan service-alter -e {env} -c {cluster} -s db1 --allow-empty --image 715289973214.dkr.ecr.us-gov-east-1.amazonaws.com/mdbs/postgres/pg-centos:{newVersion}'
+		print("Updating the DB version of this prodDB:" + cluster)
+		sp.call(['/bin/bash', '-i', '-c', titanCommand])
+if db == 'sbxdb':
+	sbxDb()
+elif db == 'proddb':
+	prodDb()
+else:
+	print("Please enter a valid dbtype. 'Either \"proddb\", \"sbxdb\". If you need more help, use -h")
